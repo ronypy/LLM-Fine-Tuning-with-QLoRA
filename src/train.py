@@ -426,13 +426,12 @@ def train(config: dict, data_dir: str = None):
         model=model,
         train_dataset=dataset["train"],
         eval_dataset=dataset["validation"],
-        peft_config=peft_config,
-        # NOTE: In trl v0.14+, `tokenizer` was renamed to `processing_class`.
-        # If you're on an older trl, change back to `tokenizer=tokenizer`.
+        # NOTE: Do NOT pass peft_config here — the model is already a PeftModel
+        # (wrapped by get_peft_model() in setup_lora above).  In trl v0.28+,
+        # passing both a PeftModel AND peft_config raises a ValueError.
         processing_class=tokenizer,
         args=training_args,
-        # max_seq_length and dataset_text_field are now inside SFTConfig
-        # (the `args` object above), NOT passed here.
+        # max_length and dataset_text_field are inside SFTConfig (the `args` above).
     )
 
     # ── Step 7: Train! ───────────────────────────────────────────────────────
