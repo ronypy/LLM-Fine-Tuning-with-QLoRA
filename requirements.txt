@@ -1,0 +1,44 @@
+# ==============================================================================
+# LLM Fine-Tuning Pipeline — Dependencies
+# ==============================================================================
+#
+# Install everything at once:
+#   pip install -r requirements.txt
+#
+# NOTE: bitsandbytes requires a CUDA-capable GPU.  If you're on macOS / CPU-only,
+# comment it out and skip the QLoRA quantisation path.
+# ==============================================================================
+
+# ── Core Hugging Face ecosystem ──────────────────────────────────────────────
+transformers>=4.36.0        # Model loading, tokeniser, Trainer API
+datasets>=2.16.0            # Load & process HF Hub datasets (e.g. sql-create-context)
+accelerate>=0.25.0          # Multi-GPU / mixed-precision helpers
+tokenizers>=0.15.0          # Fast tokeniser backend used by transformers
+
+# ── Parameter-Efficient Fine-Tuning (PEFT) ───────────────────────────────────
+peft>=0.7.0                 # LoRA / QLoRA adapter wrappers
+trl>=0.7.0                  # SFTTrainer — supervised fine-tuning made easy
+
+# ── Quantisation ─────────────────────────────────────────────────────────────
+bitsandbytes>=0.41.0        # 4-bit / 8-bit quantisation (NF4, FP4, INT8)
+
+# ── Serving / Inference ──────────────────────────────────────────────────────
+vllm>=0.2.0                 # High-throughput serving with PagedAttention
+fastapi>=0.104.0            # Lightweight API wrapper for custom endpoints
+uvicorn>=0.24.0             # ASGI server to run FastAPI
+
+# ── Experiment tracking ──────────────────────────────────────────────────────
+wandb>=0.16.0               # Weights & Biases — log metrics, hyperparams, artifacts
+
+# ── Evaluation helpers ───────────────────────────────────────────────────────
+evaluate>=0.4.0             # HF Evaluate — unified metric interface
+rouge-score>=0.1.2          # ROUGE metric (used inside evaluate)
+nltk>=3.8.0                 # Tokenisation for BLEU scoring
+sqlparse>=0.4.4             # SQL parsing & syntax validation
+scipy>=1.11.0               # Statistical helpers (perplexity computation)
+
+# ── Utilities ────────────────────────────────────────────────────────────────
+pyyaml>=6.0                 # YAML config loading
+rich>=13.0.0                # Pretty terminal output & progress bars
+requests>=2.31.0            # HTTP client (vLLM API calls)
+torch>=2.1.0                # PyTorch — the deep learning framework under the hood

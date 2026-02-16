@@ -1,0 +1,180 @@
+# ==============================================================================
+# LoRA / QLoRA Fine-Tuning Configuration
+# ==============================================================================
+#
+# This single file drives the entire training pipeline.  Every knob is
+# documented so you can experiment with confidence.
+#
+# USAGE:
+#   python src/train.py --config configs/lora_config.yaml
+# ==============================================================================
+
+
+# ─── Base Model ──────────────────────────────────────────────────────────────
+model:
+  # Hugging Face model ID — Mistral 7B instruction-tuned variant
+  name: "mistralai/Mistral-7B-v0.1"
+
+  # Number of quantisation bits for QLoRA.
+  #   4  → 4-bit NF4 quantisation (recommended, ~4.5 GB VRAM for 7B)
+  #   8  → 8-bit quantisation (~7 GB VRAM)
+  #   16 → no quantisation, full fp16 (~14 GB VRAM)
+  quantization_bits: 4
+
+  # Data type for the quantised weights.
+  # "nf4" (Normal Float 4) is the default for QLoRA and gives best accuracy
+  # at 4-bit.  Alternative: "fp4".
+  bnb_4bit_quant_type: "nf4"
+
+  # Compute dtype for the linear layers during forward pass.
+  # float16 is fastest on consumer GPUs; bfloat16 is more numerically stable
+  # on A100 / H100.
+  bnb_4bit_compute_dtype: "float16"
+
+  # Double quantisation: quantise the quantisation constants too.
+  # Saves ~0.4 GB with negligible accuracy loss — always enable.
+  use_nested_quant: true
+
+  # Trust remote code (required for some models like Falcon / Phi).
+  trust_remote_code: false
+
+
+# ─── LoRA Hyper-Parameters ───────────────────────────────────────────────────
+# LoRA (Low-Rank Adaptation) inserts small trainable matrices into the
+# frozen base model.  Only these matrices are updated during training,
+# slashing GPU memory and training time.
+#
+#   W' = W + (alpha/r) * B @ A       where A ∈ R^{d×r}, B ∈ R^{r×k}
+#
+lora:
+  # Rank (r): dimensionality of the low-rank matrices.
+  #   Higher → more capacity but more parameters.
+  #   Typical values: 8, 16, 32, 64.
+  r: 16
+
+  # Alpha (α): scaling factor.  The effective learning rate for LoRA
+  # weights is proportional to α/r.
+  #   Rule of thumb: set alpha = 2 × r.
+  lora_alpha: 32
+
+  # Dropout applied to the LoRA layers (regularisation).
+  #   0.05–0.1 is standard; 0.0 for very small datasets.
+  lora_dropout: 0.05
+
+  # Which linear layers receive LoRA adapters.
+  # For transformer models, targeting all attention + MLP projections
+  # gives the best quality.  You can reduce this list to save memory.
+  target_modules:
+    - "q_proj"    # Query projection   (attention)
+    - "k_proj"    # Key projection     (attention)
+    - "v_proj"    # Value projection   (attention)
+    - "o_proj"    # Output projection  (attention)
+    - "gate_proj" # Gate projection    (MLP / SwiGLU)
+    - "up_proj"   # Up projection      (MLP)
+    - "down_proj" # Down projection    (MLP)
+
+  # Bias handling: "none" means no bias terms are trained.
+  # Options: "none", "all", "lora_only".
+  bias: "none"
+
+  # Task type — CAUSAL_LM for auto-regressive language modelling.
+  task_type: "CAUSAL_LM"
+
+
+# ─── Training Hyper-Parameters ───────────────────────────────────────────────
+training:
+  # Output directory for checkpoints and final model.
+  output_dir: "./results"
+
+  # Total training epochs.  For fine-tuning, 1–3 epochs is usually enough.
+  num_train_epochs: 3
+
+  # Batch size PER DEVICE.  Lower this if you run out of VRAM.
+  per_device_train_batch_size: 4
+
+  # Gradient accumulation: effective batch size = batch_size × grad_accum.
+  # With batch_size=4 and grad_accum=4  →  effective batch = 16.
+  gradient_accumulation_steps: 4
+
+  # Learning rate.  2e-4 is a good default for QLoRA fine-tuning.
+  learning_rate: 2.0e-4
+
+  # Weight decay (L2 regularisation).  Helps prevent overfitting.
+  weight_decay: 0.001
+
+  # LR scheduler: "cosine" decays LR smoothly to near-zero.
+  lr_scheduler_type: "cosine"
+
+  # Warm-up: fraction of total steps where LR ramps from 0 → peak.
+  warmup_ratio: 0.03
+
+  # Maximum sequence length (tokens).  text-to-SQL prompts are short;
+  # 512 is generous.  Increase to 1024+ for longer-context tasks.
+  max_seq_length: 512
+
+  # Mixed-precision training.  fp16 for consumer GPUs; bf16 for A100/H100.
+  fp16: true
+  bf16: false
+
+  # Gradient checkpointing: trades compute for memory.  Saves ~30% VRAM.
+  gradient_checkpointing: true
+
+  # Logging & saving
+  logging_steps: 25           # Log every N optimiser steps
+  save_strategy: "steps"      # Checkpoint strategy: "steps" or "epoch"
+  save_steps: 200             # Save a checkpoint every N steps
+  save_total_limit: 3         # Keep only the last N checkpoints on disk
+  eval_strategy: "steps"      # Evaluation strategy
+  eval_steps: 200             # Evaluate every N steps
+
+  # Optimiser: "paged_adamw_32bit" is QLoRA-friendly (paged to handle spikes)
+  optim: "paged_adamw_32bit"
+
+  # Seed for reproducibility
+  seed: 42
+
+  # Group sequences by length to minimise padding waste
+  group_by_length: true
+
+
+# ─── Dataset ─────────────────────────────────────────────────────────────────
+data:
+  # Hugging Face dataset ID — text-to-SQL pairs derived from WikiSQL + Spider
+  dataset_name: "b-mc2/sql-create-context"
+
+  # Fraction of the full dataset to use (useful for quick experiments).
+  # Set to 1.0 to train on everything.
+  subset_fraction: 0.1
+
+  # Train / Validation / Test split ratios.
+  # The dataset ships as a single "train" split, so we split it ourselves.
+  train_ratio: 0.8
+  val_ratio: 0.1
+  test_ratio: 0.1
+
+  # Prompt template used to format each example.
+  # The placeholders {question}, {context}, {answer} map to dataset columns.
+  prompt_template: |
+    Below is a question about a database along with the schema.
+    Write the SQL query that answers the question.
+
+    ### Question:
+    {question}
+
+    ### Schema:
+    {context}
+
+    ### SQL:
+    {answer}
+
+
+# ─── Weights & Biases ───────────────────────────────────────────────────────
+wandb:
+  # W&B project name (visible on your dashboard).
+  project: "llm-text-to-sql"
+
+  # Run name (auto-suffixed with timestamp if empty).
+  run_name: "mistral-7b-qlora-sql"
+
+  # Set to false to disable W&B logging entirely.
+  enabled: true
