@@ -335,8 +335,9 @@ def create_training_args(train_cfg: dict, wandb_cfg: dict) -> SFTConfig:
         group_by_length=train_cfg.get("group_by_length", True),
         report_to=report_to,
         remove_unused_columns=False,
-        # ── SFT-specific parameters (new in trl v0.14+) ─────────────────
-        max_seq_length=train_cfg.get("max_seq_length", 512),
+        # ── SFT-specific parameters ──────────────────────────────────────
+        # NOTE: In trl v0.28+, max_seq_length was renamed to max_length.
+        max_length=train_cfg.get("max_seq_length", 512),
         dataset_text_field="text",  # Column with formatted prompts
     )
 
