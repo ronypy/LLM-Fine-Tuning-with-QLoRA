@@ -44,9 +44,10 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
-    TrainingArguments,
 )
-from trl import SFTTrainer
+# NOTE: In trl v0.14+, SFTConfig replaces TrainingArguments for SFTTrainer.
+# SFTConfig extends TrainingArguments with SFT-specific params like max_seq_length.
+from trl import SFTTrainer, SFTConfig
 
 # ─── Rich console for pretty output ─────────────────────────────────────────
 console = Console()
@@ -264,9 +265,15 @@ def setup_lora(model, lora_cfg: dict):
 # ==============================================================================
 #  5. TRAINING ARGUMENTS
 # ==============================================================================
-def create_training_args(train_cfg: dict, wandb_cfg: dict) -> TrainingArguments:
+def create_training_args(train_cfg: dict, wandb_cfg: dict) -> SFTConfig:
     """
-    Build Hugging Face TrainingArguments from the YAML config.
+    Build an SFTConfig from the YAML config.
+
+    WHY SFTConfig INSTEAD OF TrainingArguments?
+        In trl v0.14+, SFTConfig replaced TrainingArguments for SFTTrainer.
+        SFTConfig *extends* TrainingArguments with SFT-specific parameters
+        like max_seq_length, dataset_text_field, and packing — so you get
+        everything in one object.
 
     IMPORTANT SETTINGS EXPLAINED:
         • gradient_accumulation_steps:
@@ -288,7 +295,7 @@ def create_training_args(train_cfg: dict, wandb_cfg: dict) -> TrainingArguments:
         wandb_cfg: The 'wandb' section of the YAML config.
 
     Returns:
-        A TrainingArguments object.
+        An SFTConfig object (extends TrainingArguments).
     """
     # Set up Weights & Biases reporting
     report_to = "wandb" if wandb_cfg.get("enabled", True) else "none"
@@ -300,7 +307,9 @@ def create_training_args(train_cfg: dict, wandb_cfg: dict) -> TrainingArguments:
         run_name = f"{run_name}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         os.environ["WANDB_RUN_NAME"] = run_name
 
-    training_args = TrainingArguments(
+    # SFTConfig extends TrainingArguments with SFT-specific params.
+    # max_seq_length and dataset_text_field now go HERE, not in SFTTrainer().
+    training_args = SFTConfig(
         output_dir=train_cfg.get("output_dir", "./results"),
         num_train_epochs=train_cfg.get("num_train_epochs", 3),
         per_device_train_batch_size=train_cfg.get("per_device_train_batch_size", 4),
@@ -310,8 +319,7 @@ def create_training_args(train_cfg: dict, wandb_cfg: dict) -> TrainingArguments:
         weight_decay=train_cfg.get("weight_decay", 0.001),
         lr_scheduler_type=train_cfg.get("lr_scheduler_type", "cosine"),
         # NOTE: warmup_ratio is deprecated in transformers v5.2+.
-        # We use warmup_steps instead.  A warmup_steps of 100 is a safe
-        # default; adjust based on your dataset size.
+        # We use warmup_steps instead.
         warmup_steps=train_cfg.get("warmup_steps", 100),
         fp16=train_cfg.get("fp16", True),
         bf16=train_cfg.get("bf16", False),
@@ -326,11 +334,13 @@ def create_training_args(train_cfg: dict, wandb_cfg: dict) -> TrainingArguments:
         seed=train_cfg.get("seed", 42),
         group_by_length=train_cfg.get("group_by_length", True),
         report_to=report_to,
-        # Remove unused columns (dataset may have extra fields like 'text')
         remove_unused_columns=False,
+        # ── SFT-specific parameters (new in trl v0.14+) ─────────────────
+        max_seq_length=train_cfg.get("max_seq_length", 512),
+        dataset_text_field="text",  # Column with formatted prompts
     )
 
-    console.print("[green]✓[/green] Created TrainingArguments")
+    console.print("[green]✓[/green] Created SFTConfig")
     return training_args
 
 
@@ -416,12 +426,12 @@ def train(config: dict, data_dir: str = None):
         train_dataset=dataset["train"],
         eval_dataset=dataset["validation"],
         peft_config=peft_config,
-        # NOTE: In trl v0.14+, the `tokenizer` parameter was renamed to
-        # `processing_class`.  If you're on an older version of trl,
-        # change this back to `tokenizer=tokenizer`.
+        # NOTE: In trl v0.14+, `tokenizer` was renamed to `processing_class`.
+        # If you're on an older trl, change back to `tokenizer=tokenizer`.
         processing_class=tokenizer,
         args=training_args,
-        max_seq_length=train_cfg.get("max_seq_length", 512),
+        # max_seq_length and dataset_text_field are now inside SFTConfig
+        # (the `args` object above), NOT passed here.
     )
 
     # ── Step 7: Train! ───────────────────────────────────────────────────────
