@@ -309,7 +309,10 @@ def create_training_args(train_cfg: dict, wandb_cfg: dict) -> TrainingArguments:
         learning_rate=train_cfg.get("learning_rate", 2e-4),
         weight_decay=train_cfg.get("weight_decay", 0.001),
         lr_scheduler_type=train_cfg.get("lr_scheduler_type", "cosine"),
-        warmup_ratio=train_cfg.get("warmup_ratio", 0.03),
+        # NOTE: warmup_ratio is deprecated in transformers v5.2+.
+        # We use warmup_steps instead.  A warmup_steps of 100 is a safe
+        # default; adjust based on your dataset size.
+        warmup_steps=train_cfg.get("warmup_steps", 100),
         fp16=train_cfg.get("fp16", True),
         bf16=train_cfg.get("bf16", False),
         gradient_checkpointing=train_cfg.get("gradient_checkpointing", True),
@@ -413,10 +416,12 @@ def train(config: dict, data_dir: str = None):
         train_dataset=dataset["train"],
         eval_dataset=dataset["validation"],
         peft_config=peft_config,
-        tokenizer=tokenizer,
+        # NOTE: In trl v0.14+, the `tokenizer` parameter was renamed to
+        # `processing_class`.  If you're on an older version of trl,
+        # change this back to `tokenizer=tokenizer`.
+        processing_class=tokenizer,
         args=training_args,
         max_seq_length=train_cfg.get("max_seq_length", 512),
-        dataset_text_field="text",  # Column with formatted prompts
     )
 
     # ── Step 7: Train! ───────────────────────────────────────────────────────

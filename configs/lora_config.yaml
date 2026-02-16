@@ -105,8 +105,9 @@ training:
   # LR scheduler: "cosine" decays LR smoothly to near-zero.
   lr_scheduler_type: "cosine"
 
-  # Warm-up: fraction of total steps where LR ramps from 0 → peak.
-  warmup_ratio: 0.03
+  # Warm-up: number of optimiser steps where LR ramps from 0 → peak.
+  # (warmup_ratio was deprecated in transformers v5.2+)
+  warmup_steps: 100
 
   # Maximum sequence length (tokens).  text-to-SQL prompts are short;
   # 512 is generous.  Increase to 1024+ for longer-context tasks.
